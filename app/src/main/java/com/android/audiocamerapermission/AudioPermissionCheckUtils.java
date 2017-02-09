@@ -4,6 +4,7 @@ import android.content.Context;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
+import android.util.Log;
 
 /**
  * Description:
@@ -12,7 +13,7 @@ import android.media.MediaRecorder;
  * @since 2016-08-12
  */
 public class AudioPermissionCheckUtils {
-    private static final String TAG = "AudioPermissionCheckUtils";
+    private static final String TAG = "AudioPermissionCheckUt";
 
     // 音频获取源
     public static int audioSource = MediaRecorder.AudioSource.MIC;
@@ -32,25 +33,40 @@ public class AudioPermissionCheckUtils {
         bufferSizeInBytes = 0;
         bufferSizeInBytes = AudioRecord.getMinBufferSize(sampleRateInHz,
                 channelConfig, audioFormat);
-        AudioRecord audioRecord =  new AudioRecord(audioSource, sampleRateInHz,
-                channelConfig, audioFormat, bufferSizeInBytes);
+        AudioRecord audioRecord = null;
+        try {
+            audioRecord =  new AudioRecord(audioSource, sampleRateInHz,
+                    channelConfig, audioFormat, bufferSizeInBytes);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
         //开始录制音频
         try{
             // 防止某些手机崩溃，例如联想
             audioRecord.startRecording();
         }catch (IllegalStateException e){
             e.printStackTrace();
+            Log.e(TAG, Log.getStackTraceString(e));
         }
         /**
          * 根据开始录音判断是否有录音权限
          */
-        if (audioRecord.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) {
+        if (audioRecord.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING
+                && audioRecord.getRecordingState() != AudioRecord.RECORDSTATE_STOPPED) {
+            Log.e(TAG, "audioRecord.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING : " + audioRecord.getRecordingState());
             return false;
+        }
+
+        if (audioRecord.getRecordingState() == AudioRecord.RECORDSTATE_STOPPED) {
+            //如果短时间内频繁检测，会造成audioRecord还未销毁完成，此时检测会返回RECORDSTATE_STOPPED状态，再去read，会读到0的size，所以此时默认权限通过
+            return true;
         }
 
         byte[] bytes = new byte[1024];
         int readSize = audioRecord.read(bytes, 0, 1024);
         if (readSize == AudioRecord.ERROR_INVALID_OPERATION || readSize <= 0) {
+            Log.e(TAG, "readSize illegal : " + readSize);
             return false;
         }
         audioRecord.stop();
